@@ -143,22 +143,31 @@ namespace yolo {
     {
 //        cv::Mat rgb;
 //        cv::cvtColor(in_img, rgb, cv::COLOR_BGR2RGB);
-//
 //        cv::resize(rgb, rgb, cv::Size(w, h));
-
-        // cv::Mat img_float;
+//        cv::Mat img_float;
+//        rgb.convertTo(img_float, CV_32FC3, 1 / 255.0);
+//        HWC TO CHW
+//        std::vector<cv::Mat> input_channels(c);
+//        cv::split(img_float, input_channels);
+//        std::vector<float> result(h * w * c);
+//        auto data = result.data();
+//        int channel_length = h * w;
+//        for (int i = 0; i < c; ++i) {
+//          memcpy(data, input_channels[i].data, channel_length * sizeof(float));
+//          data += channel_length;
+//        }
+//
+//        return result;
         cv::Mat img_float = warpaffine_to_center_align(in_img, cv::Size(w, h));
         // 先用opencv的warpaffine替代掉，然后再去cuda，cuda的有内存泄漏问题。。。。。是OOM,现在rviz占用的显存比之前高了
-        // rgb.convertTo(img_float, CV_32FC3, 1 / 255.0);
+
 
         // Mat output = warpaffine_to_center_align(image, Size(640, 640));  // opencv的Size
         // cv::imwrite("/media/ros/A666B94D66B91F4D/ros/project/autoware_auto/rgb.jpg",rgb);
         // cv::imwrite("/media/ros/A666B94D66B91F4D/ros/project/autoware_auto/img_float.jpg",img_float);
         // std::cout << "the c is: " << c <<std::endl;
 
-        // HWC TO CHW
-        // std::vector<cv::Mat> input_channels(c);
-        // cv::split(img_float, input_channels);
+
         int nBytes = img_float.rows * img_float.cols * img_float.channels();
         std::vector<float> result(h * w * c);
         auto data = result.data();
