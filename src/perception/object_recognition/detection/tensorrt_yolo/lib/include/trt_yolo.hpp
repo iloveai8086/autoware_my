@@ -53,97 +53,111 @@
 #include "cuda_utils.h"
 #include "yolo_layer.h"
 
-namespace yolo
-{
-struct Deleter
-{
-  template <typename T>
-  void operator()(T * obj) const
-  {
-    if (obj) {
-      obj->destroy();
+// 比较大小的宏
+// #define min(a, b)  ((a) < (b) ? (a) : (b))
+#define checkRuntime(op)  __check_cuda_runtime((op), #op, __FILE__, __LINE__)
+
+bool __check_cuda_runtime(cudaError_t code, const char *op, const char *file, int line) {
+    if (code != cudaSuccess) {
+        const char *err_name = cudaGetErrorName(code);
+        const char *err_message = cudaGetErrorString(code);
+        printf("runtime error %s:%d  %s failed. \n  code = %s, message = %s\n", file, line, op, err_name, err_message);
+        return false;
     }
-  }
-};
+    return true;
+}
 
-template <typename T>
-using unique_ptr = std::unique_ptr<T, Deleter>;
+namespace yolo {
+    struct Deleter {
+        template<typename T>
+        void operator()(T *obj) const {
+            if (obj) {
+                obj->destroy();
+            }
+        }
+    };
 
-class Logger : public nvinfer1::ILogger
-{
-public:
-  Logger(bool verbose) : verbose_(verbose) {}
+    template<typename T>
+    using unique_ptr = std::unique_ptr<T, Deleter>;
 
-  void log(Severity severity, const char * msg) override
-  {
-    if (verbose_ || ((severity != Severity::kINFO) && (severity != Severity::kVERBOSE)))
-      std::cout << msg << std::endl;
-  }
+    class Logger : public nvinfer1::ILogger {
+    public:
+        Logger(bool verbose) : verbose_(verbose) {}
 
-private:
-  bool verbose_{false};
-};
+        void log(Severity severity, const char *msg) override {
+            if (verbose_ || ((severity != Severity::kINFO) && (severity != Severity::kVERBOSE)))
+                std::cout << msg << std::endl;
+        }
 
-struct Config
-{
-  int num_anchors;
-  std::vector<float> anchors;
-  std::vector<float> scale_x_y;
-  float score_thresh;
-  float iou_thresh;
-  int detections_per_im;
-  bool use_darknet_layer;
-  float ignore_thresh;
-};
+    private:
+        bool verbose_{false};
+    };
 
-class Net
-{
-public:
-  // Create engine from engine path
-  Net(const std::string & engine_path, bool verbose = false);
+    struct Config {
+        int num_anchors;
+        std::vector<float> anchors;
+        std::vector<float> scale_x_y;
+        float score_thresh;
+        float iou_thresh;
+        int detections_per_im;
+        bool use_darknet_layer;
+        float ignore_thresh;
+    };
 
-  // Create engine from serialized onnx model
-  Net(
-    const std::string & onnx_file_path, const std::string & precision, const int max_batch_size,
-    const Config & yolo_config, const std::vector<std::string> & calibration_images,
-    const std::string & calibration_table, bool verbose = false, size_t workspace_size = (1ULL << 30));
+    class Net {
+    public:
+        // Create engine from engine path
+        Net(const std::string &engine_path, bool verbose = false);
 
-  ~Net();
+        // Create engine from serialized onnx model
+        Net(
+                const std::string &onnx_file_path, const std::string &precision, const int max_batch_size,
+                const Config &yolo_config, const std::vector<std::string> &calibration_images,
+                const std::string &calibration_table, bool verbose = false, size_t workspace_size = (1ULL << 30));
 
-  // Save model to path
-  void save(const std::string & path) const;
+        ~Net();
 
-  bool detect(const cv::Mat & in_img, float * out_scores, float * out_boxes, float * out_classes);
+        // Save model to path
+        void save(const std::string &path) const;
 
-  // Get (c, h, w) size of the fixed input
-  std::vector<int> getInputDims() const;
+        bool detect(const cv::Mat &in_img, float *out_scores, float *out_boxes, float *out_classes, uint8_t *img_host,
+                    uint8_t *img_device);
 
-  std::vector<int> getOutputScoreSize() const;
+        // Get (c, h, w) size of the fixed input
+        std::vector<int> getInputDims() const;
 
-  // Get max allowed batch size
-  int getMaxBatchSize() const;
+        std::vector<int> getOutputScoreSize() const;
 
-  // Get max number of detections
-  int getMaxDetections() const;
+        // Get max allowed batch size
+        int getMaxBatchSize() const;
 
-  int getInputSize() const;
+        // Get max number of detections
+        int getMaxDetections() const;
 
-private:
-  unique_ptr<nvinfer1::IRuntime> runtime_ = nullptr;
-  unique_ptr<nvinfer1::ICudaEngine> engine_ = nullptr;
-  unique_ptr<nvinfer1::IExecutionContext> context_ = nullptr;
-  cudaStream_t stream_ = nullptr;
-  cuda::unique_ptr<float[]> input_d_ = nullptr;
-  cuda::unique_ptr<float[]> out_scores_d_ = nullptr;
-  cuda::unique_ptr<float[]> out_boxes_d_ = nullptr;
-  cuda::unique_ptr<float[]> out_classes_d_ = nullptr;
+        int getInputSize() const;
 
-  void load(const std::string & path);
-  bool prepare();
-  std::vector<float> preprocess(
-    const cv::Mat & in_img, const int c, const int h, const int w) const;
-  // Infer using pre-allocated GPU buffers {data, scores, boxes}
-  void infer(std::vector<void *> & buffers, const int batch_size);
-};
+    private:
+        unique_ptr<nvinfer1::IRuntime> runtime_ = nullptr;
+        unique_ptr<nvinfer1::ICudaEngine> engine_ = nullptr;
+        unique_ptr<nvinfer1::IExecutionContext> context_ = nullptr;
+        cudaStream_t stream_ = nullptr;
+        cuda::unique_ptr<float[]> input_d_ = nullptr;
+        cuda::unique_ptr<float[]> out_scores_d_ = nullptr;
+        cuda::unique_ptr<float[]> out_boxes_d_ = nullptr;
+        cuda::unique_ptr<float[]> out_classes_d_ = nullptr;
+
+        float *buffers[1];
+
+        void load(const std::string &path);
+
+        bool prepare();
+
+        float *preprocess(
+                const cv::Mat &in_img, const int c, const int h, const int w, uint8_t *img_host,
+                uint8_t *img_device) const;
+
+        // Infer using pre-allocated GPU buffers {data, scores, boxes}
+        void infer(std::vector<void *> &buffers, const int batch_size);
+    };
 
 }  // namespace yolo

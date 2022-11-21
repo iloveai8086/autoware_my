@@ -108,6 +108,11 @@ namespace object_recognition {
         cv::Mat m2x3_d2i(2, 3, CV_32F, d2i);  // dst to image, 2x3 matrix
         cv::invertAffineTransform(m2x3_i2d,
                                   m2x3_d2i);
+        //----------------------------------------------------------------   这边要析构掉，但是没看到析构函数怎么写的。。。。和之前的ros不一样？
+        // prepare input data cache in pinned memory
+        checkRuntime(cudaMallocHost((void**)&img_host, 3000*3000* 3));  // 3000*3000*3
+        // prepare input data cache in device memory
+        checkRuntime(cudaMalloc((void**)&img_device, 3000*3000* 3));  // 3000*3000*3
     }
 
     void TensorrtYoloNodelet::connectCb() {
@@ -155,11 +160,15 @@ namespace object_recognition {
         */
         // -------------------------------------------------------------------------------------------------------------
 
+        auto start = std::chrono::system_clock::now();
         if (!net_ptr_->detect(
-                in_image_ptr->image, out_scores_.get(), out_boxes_.get(), out_classes_.get())) {
+                in_image_ptr->image, out_scores_.get(), out_boxes_.get(), out_classes_.get(),img_host,img_device)) {
             NODELET_WARN("Fail to inference");
             return;
         }
+        auto end = std::chrono::system_clock::now();
+        std::cout << "end2end time: " << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count()
+                  << "us" << std::endl;
         // std::cout << "infer done!" << std::endl;
         const auto width = in_image_ptr->image.cols;
         const auto height = in_image_ptr->image.rows;
@@ -170,32 +179,32 @@ namespace object_recognition {
             // std::cout << out_boxes_[4 * i] << ' ' << out_boxes_[4 * i + 1] << ' '
             //           << out_boxes_[4 * i + 2] << ' ' << out_boxes_[4 * i + 3] << std::endl;
 
-            object.feature.roi.x_offset = out_boxes_[4 * i] * width;
-            object.feature.roi.y_offset = out_boxes_[4 * i + 1] * height;
-            object.feature.roi.width = out_boxes_[4 * i + 2] * width;
-            object.feature.roi.height = out_boxes_[4 * i + 3] * height;
+//            object.feature.roi.x_offset = out_boxes_[4 * i] * width;
+//            object.feature.roi.y_offset = out_boxes_[4 * i + 1] * height;
+//            object.feature.roi.width = out_boxes_[4 * i + 2] * width;
+//            object.feature.roi.height = out_boxes_[4 * i + 3] * height;
 
             // 这地方是左上角和wh，很离谱
-//            object.feature.roi.x_offset = out_boxes_[4 * i] * 640;
-//            object.feature.roi.y_offset = out_boxes_[4 * i + 1] * 640;
-//            object.feature.roi.width = out_boxes_[4 * i + 2] * 640;
-//            object.feature.roi.height = out_boxes_[4 * i + 3] * 640;
-//
-//            float cx = object.feature.roi.x_offset + object.feature.roi.width / 2.0;
-//            float cy = object.feature.roi.y_offset + object.feature.roi.height / 2.0;
-//            float width  = object.feature.roi.width;
-//            float height = object.feature.roi.height;
-//
-//            float left   = cx - width * 0.5;
-//            float top    = cy - height * 0.5;
-//            float right  = cx + width * 0.5;
-//            float bottom = cy + height * 0.5;
-//
-//            // 对应图上的位置  反变换回原图 1920*1080   d2i   只用了025，因为只有缩放平移的时候，就只有三个有效自由度，缩放、平移 scale dx dy就是0 2 5
-//            float image_base_left   = d2i[0] * left   + d2i[2];  // x的
-//            float image_base_right  = d2i[0] * right  + d2i[2];
-//            float image_base_top    = d2i[0] * top    + d2i[5];  // y的
-//            float image_base_bottom = d2i[0] * bottom + d2i[5];
+            object.feature.roi.x_offset = out_boxes_[4 * i] * 640;
+            object.feature.roi.y_offset = out_boxes_[4 * i + 1] * 640;
+            object.feature.roi.width = out_boxes_[4 * i + 2] * 640;
+            object.feature.roi.height = out_boxes_[4 * i + 3] * 640;
+
+            float cx = object.feature.roi.x_offset + object.feature.roi.width / 2.0;
+            float cy = object.feature.roi.y_offset + object.feature.roi.height / 2.0;
+            float width  = object.feature.roi.width;
+            float height = object.feature.roi.height;
+
+            float left   = cx - width * 0.5;
+            float top    = cy - height * 0.5;
+            float right  = cx + width * 0.5;
+            float bottom = cy + height * 0.5;
+
+            // 对应图上的位置  反变换回原图 1920*1080   d2i   只用了025，因为只有缩放平移的时候，就只有三个有效自由度，缩放、平移 scale dx dy就是0 2 5
+            float image_base_left   = d2i[0] * left   + d2i[2];  // x的
+            float image_base_right  = d2i[0] * right  + d2i[2];
+            float image_base_top    = d2i[0] * top    + d2i[5];  // y的
+            float image_base_bottom = d2i[0] * bottom + d2i[5];
 
             object.object.semantic.confidence = out_scores_[i];
             const auto class_id = static_cast<int>(out_classes_[i]);
@@ -218,18 +227,18 @@ namespace object_recognition {
             }
             out_objects.feature_objects.push_back(object);
 
-            const auto left = std::max(0, static_cast<int>(object.feature.roi.x_offset));
-            const auto top = std::max(0, static_cast<int>(object.feature.roi.y_offset));
-            const auto right =
-                    std::min(static_cast<int>(object.feature.roi.x_offset + object.feature.roi.width), width);
-            const auto bottom =
-                    std::min(static_cast<int>(object.feature.roi.y_offset + object.feature.roi.height), height);
-//            cv::rectangle(
-//                    in_image_ptr->image, cv::Point(image_base_left, image_base_top), cv::Point(image_base_right, image_base_bottom), cv::Scalar(0, 0, 255), 3,
-//                    8, 0);
+//            const auto left = std::max(0, static_cast<int>(object.feature.roi.x_offset));
+//            const auto top = std::max(0, static_cast<int>(object.feature.roi.y_offset));
+//            const auto right =
+//                    std::min(static_cast<int>(object.feature.roi.x_offset + object.feature.roi.width), width);
+//            const auto bottom =
+//                    std::min(static_cast<int>(object.feature.roi.y_offset + object.feature.roi.height), height);
             cv::rectangle(
-                    in_image_ptr->image, cv::Point(left, top), cv::Point(right, bottom), cv::Scalar(0, 0, 255), 3,
+                    in_image_ptr->image, cv::Point(image_base_left, image_base_top), cv::Point(image_base_right, image_base_bottom), cv::Scalar(0, 0, 255), 3,
                     8, 0);
+//            cv::rectangle(
+//                    in_image_ptr->image, cv::Point(left, top), cv::Point(right, bottom), cv::Scalar(0, 0, 255), 3,
+//                    8, 0);
         }
         image_pub_.publish(in_image_ptr->toImageMsg());
 

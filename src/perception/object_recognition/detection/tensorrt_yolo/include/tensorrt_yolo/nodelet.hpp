@@ -76,6 +76,8 @@ namespace object_recognition {
         float scale_y = input_height / image_rows; //(float) image.rows;  // 540
         float scale = std::min(scale_x, scale_y);  // 等比缩放取一个最小的比例值
         float i2d[6], d2i[6];
+        uint8_t* img_host = nullptr;
+        uint8_t* img_device = nullptr;
 
     };
 

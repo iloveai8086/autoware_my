@@ -53,26 +53,33 @@
 
 
 // 比较大小的宏
-#define min(a, b)  ((a) < (b) ? (a) : (b))
-#define checkRuntime(op)  __check_cuda_runtime((op), #op, __FILE__, __LINE__)
+//#define min(a, b)  ((a) < (b) ? (a) : (b))
+//#define checkRuntime(op)  __check_cuda_runtime((op), #op, __FILE__, __LINE__)
+//
+//bool __check_cuda_runtime(cudaError_t code, const char *op, const char *file, int line) {
+//    if (code != cudaSuccess) {
+//        const char *err_name = cudaGetErrorName(code);
+//        const char *err_message = cudaGetErrorString(code);
+//        printf("runtime error %s:%d  %s failed. \n  code = %s, message = %s\n", file, line, op, err_name, err_message);
+//        return false;
+//    }
+//    return true;
+//}
 
-bool __check_cuda_runtime(cudaError_t code, const char *op, const char *file, int line) {
-    if (code != cudaSuccess) {
-        const char *err_name = cudaGetErrorName(code);
-        const char *err_message = cudaGetErrorString(code);
-        printf("runtime error %s:%d  %s failed. \n  code = %s, message = %s\n", file, line, op, err_name, err_message);
-        return false;
-    }
-    return true;
-}
+
+
+
+void preprocess_kernel_img(uint8_t *src, int src_width, int src_height,
+                           float *dst, int dst_width, int dst_height,
+                           cudaStream_t stream);
 
 void warp_affine_bilinear( // 声明
         uint8_t *src, int src_line_size, int src_width, int src_height,
         float *dst, int dst_line_size, int dst_width, int dst_height,
-        uint8_t fill_value
+        uint8_t fill_value, cudaStream_t stream
 );
 
-cv::Mat warpaffine_to_center_align(const cv::Mat &image, const cv::Size &size) {
+cv::Mat warpaffine_to_center_align(const cv::Mat &image, const cv::Size &size, cudaStream_t stream) {
     /*
        建议先阅读代码，若有疑问，可点击抖音短视频进行辅助讲解(建议1.5倍速观看)
             思路讲解：https://v.douyin.com/NhrNnVm/
@@ -94,7 +101,7 @@ cv::Mat warpaffine_to_center_align(const cv::Mat &image, const cv::Size &size) {
     warp_affine_bilinear(
             psrc_device, image.cols * 3, image.cols, image.rows,
             pdst_device, size.width * 3, size.width, size.height,
-            114
+            114, stream
     );
 
     // 检查核函数执行是否存在错误
@@ -135,22 +142,27 @@ namespace yolo {
         out_boxes_d_ = cuda::make_unique<float[]>(getMaxBatchSize() * getMaxDetections() * 4);
         out_classes_d_ = cuda::make_unique<float[]>(getMaxBatchSize() * getMaxDetections());
         cudaStreamCreate(&stream_);
+        checkRuntime(cudaMalloc((void**)&buffers[0], 1 * 3 * 640 * 640 * sizeof(float)));
         return true;
     }
 
-    std::vector<float> Net::preprocess(
-            const cv::Mat &in_img, const int c, const int w, const int h) const  // 3 640 640
+    float* Net::preprocess(
+            const cv::Mat &in_img, const int c, const int w, const int h, uint8_t *img_host,
+            uint8_t *img_device) const  // 3 640 640
     {
 //        cv::Mat rgb;
 //        cv::cvtColor(in_img, rgb, cv::COLOR_BGR2RGB);
 //        cv::resize(rgb, rgb, cv::Size(w, h));
 //        cv::Mat img_float;
 //        rgb.convertTo(img_float, CV_32FC3, 1 / 255.0);
-//        HWC TO CHW
+//        // HWC TO CHW
 //        std::vector<cv::Mat> input_channels(c);
 //        cv::split(img_float, input_channels);
+//        std::cout<< w<<' '<< h<<std::endl;
+//        std::cout<< in_img.cols<<' '<< in_img.rows<<std::endl;
 //        std::vector<float> result(h * w * c);
-//        auto data = result.data();
+//        std::cout<< typeid(result.data()).name() << std::endl;
+//        auto data = result.data();  // float*
 //        int channel_length = h * w;
 //        for (int i = 0; i < c; ++i) {
 //          memcpy(data, input_channels[i].data, channel_length * sizeof(float));
@@ -158,27 +170,60 @@ namespace yolo {
 //        }
 //
 //        return result;
-        cv::Mat img_float = warpaffine_to_center_align(in_img, cv::Size(w, h));
+
+        size_t size_image = in_img.cols * in_img.rows * 3;
+        size_t size_image_dst = 640 * 640 * 3;
+        memcpy(img_host, in_img.data, size_image);
+        checkRuntime(cudaMemcpyAsync(img_device, img_host, size_image, cudaMemcpyHostToDevice, stream_));
+
+
+        float* buffer_idx = (float*)buffers[0];
+
+        // std::vector<float> result(640 * 640 * 3);
+        // std::cout<< typeid(result.data()).name() << std::endl;
+        // float* data = result.data();
+
+        // std::cout<<data<< ' ' << result.data() <<std::endl;
+
+        //float *buffers[2];
+        //float *buffer_idx = (float *) buffers[0];
+
+        // std::cout<< w<<' '<< h<<std::endl;  // 640 640
+        // std::cout<< in_img.cols<<' '<< in_img.rows<<std::endl;  // 960 540
+        auto start = std::chrono::system_clock::now();
+        preprocess_kernel_img(img_device, in_img.cols, in_img.rows, buffer_idx, 640, 640, stream_);
+        // 越界的原因是因为，buffer_idx一开始没有和显存绑定在一起
+        // checkRuntime(cudaFree(buffers[0]));  // 这边不能free
+        auto end = std::chrono::system_clock::now();
+        std::cout << "kernel time: " << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count()
+                  << "us" << std::endl;
+        return buffer_idx;
+
+
+        // buffer_idx += size_image_dst;
+//        auto start = std::chrono::system_clock::now();
+//        cv::Mat img_float = warpaffine_to_center_align(in_img, cv::Size(w, h),stream_);
+//        auto end = std::chrono::system_clock::now();
+//        std::cout << "kernel time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
+//                  << "ms" << std::endl;
+
         // 先用opencv的warpaffine替代掉，然后再去cuda，cuda的有内存泄漏问题。。。。。是OOM,现在rviz占用的显存比之前高了
-
-
         // Mat output = warpaffine_to_center_align(image, Size(640, 640));  // opencv的Size
         // cv::imwrite("/media/ros/A666B94D66B91F4D/ros/project/autoware_auto/rgb.jpg",rgb);
         // cv::imwrite("/media/ros/A666B94D66B91F4D/ros/project/autoware_auto/img_float.jpg",img_float);
         // std::cout << "the c is: " << c <<std::endl;
 
 
-        int nBytes = img_float.rows * img_float.cols * img_float.channels();
-        std::vector<float> result(h * w * c);
-        auto data = result.data();
-        memcpy(data, img_float.data, nBytes);
+//        int nBytes = img_float.rows * img_float.cols * img_float.channels();
+//        std::vector<float> result(h * w * c);
+//        auto data = result.data();  // 这几句拷贝的很耗时间，删掉就是直接光速
+//        memcpy(data, img_float.data, nBytes);
 //        int channel_length = h * w;
 //        for (int i = 0; i < c; ++i) {
 //            memcpy(data, input_channels[i].data, channel_length * sizeof(float));
 //            data += channel_length;
 //        }
 
-        return result;
     }
 
     Net::Net(const std::string &path, bool verbose) {
@@ -195,6 +240,7 @@ namespace yolo {
         if (stream_) {
             cudaStreamSynchronize(stream_);
             cudaStreamDestroy(stream_);
+            checkRuntime(cudaFree(buffers[0]));
         }
     }
 
@@ -341,17 +387,24 @@ namespace yolo {
         cudaStreamSynchronize(stream_);
     }
 
-    bool Net::detect(const cv::Mat &in_img, float *out_scores, float *out_boxes, float *out_classes) {
+    bool Net::detect(const cv::Mat &in_img, float *out_scores, float *out_boxes, float *out_classes, uint8_t *img_host,
+                     uint8_t *img_device) {
         const auto input_dims = getInputDims();
 
         auto start = std::chrono::system_clock::now();
-        const auto input = preprocess(in_img, input_dims.at(0), input_dims.at(2), input_dims.at(1));
-        auto end = std::chrono::system_clock::now();
-        std::cout << "preprocess time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
-                  << "ms" << std::endl;
 
+        const auto input = preprocess(in_img, input_dims.at(0), input_dims.at(2), input_dims.at(1), img_host, img_device);
+        // std::cout << sizeof(input) << ' ' << sizeof(input[0]) << std::endl;
+        // std::cout << input.data() << ' ' << input.size() << ' ' << typeid(input).name() << std::endl;
+        // 0x7f2bdb8d98d0 1228800 StvectorIfSaIfEE
+
+        auto end = std::chrono::system_clock::now();
+        std::cout << "preprocess time: " << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count()
+                  << "us" << std::endl;
+
+        // 这边数组越界,原来这边报错未必是这边越界，他妈的上面越界了
         CHECK_CUDA_ERROR(
-                cudaMemcpy(input_d_.get(), input.data(), input.size() * sizeof(float), cudaMemcpyHostToDevice));
+                cudaMemcpy(input_d_.get(),input, 640*640*3 * sizeof(float), cudaMemcpyHostToDevice));
 
 
         std::vector<void *> buffers = {
