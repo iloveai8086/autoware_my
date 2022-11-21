@@ -1,0 +1,2 @@
+float32 aimspeed
+float32 aimsteer

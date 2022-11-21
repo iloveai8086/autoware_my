@@ -1,0 +1,9 @@
+uint8 v1
+uint8 v2
+float32 x
+float32 y
+float32 speed
+float32 angle
+float32 azi
+float32 curvature
+float32 s

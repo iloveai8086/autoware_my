@@ -1,0 +1,24 @@
+复现过程遇到的问题
+catkin_make
+sudo apt-get install ros-melodic-lgsvl-msgs     得装个这个东西，不然编译报错
+直接catkin build
+
+运行时：
+sudo apt install ros-melodic-robot-state-publisher
+sudo apt-get install ros-melodic-xacro     解决
+去地面的节点：roslaunch object_map points2costmap.launch      其实我觉得去地面可能可以不要，得看autoware里面有没有做这个去地面了
+开启autoware的节点：
+roslaunch autoware_launch autoware.launch map_path:=/media/ros/A666B94D66B91F4D/ros/project/autoware_data/modern_city rosbag:=false
+这个节点里面的rosbag参数给了false，可能是如果不用fasle时间戳啥的没有，导致可视化有问题？
+cd /media/ros/A666B94D66B91F4D/ros/project/autoware_data
+rosbag play ...
+
+
+
+
+
+这个catkin make的工程可以：这样的可以直接clion里面打开这个文件，需要有哪个大的cmakelist，而catkin build没有，不知道有什么方法可以拿到
+catkin_make 和catkin build的区别：反正编译下来就看到后者的文件更多、更大一些，然后这种编译出来的最后加载权重文件为什么都是在src里面
+但是colcon build 就是在install里面，可能默认install了吧
+
+

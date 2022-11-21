@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <!-- Map path -->
+  <arg name="map_path"/>
+
+  <!-- Rosbag -->
+  <!-- 不用自己的去地面的节点，就需要把折use设置为true，因为不走那个节点了 -->
+  <arg name="rosbag" default="false" />
+<!--  <param name="/use_sim_time" value="$(arg rosbag)" />-->
+  <param name="/use_sim_time" value="true" />
+
+  <!-- Vehicle Setting -->
+  <include file="$(find vehicle_launch)/launch/vehicle_description/vehicle_description.launch" />
+
+  <!-- System -->
+  <include file="$(find system_launch)/launch/system.launch" />
+
+  <!-- Map -->
+  <include file="$(find map_launch)/launch/map.launch">
+    <arg name="map_path" value="$(arg map_path)"/>
+  </include>
+
+  <!-- Sensing -->
+  <include file="$(find sensing_launch)/launch/sensing.launch">
+    <arg name="launch_driver" value="true" unless="$(arg rosbag)"/>
+    <arg name="launch_driver" value="false" if="$(arg rosbag)"/>
+  </include>
+
+  <!-- Localization -->
+  <!-- <include file="$(find localization_launch)/launch/localization.launch">
+  </include> -->
+  
+  <!-- Planning Simulator -->
+  <include file="$(find simple_planning_simulator)/launch/simple_planning_simulator.launch" />
+
+  <!-- Perception -->
+  <include file="$(find perception_launch)/launch/perception.launch">
+    <arg name="mode" value="lidar"/>
+    <!-- "camera_lidar_fusion", "lidar" or "camera" -->
+  </include>
+
+  <!-- Planning -->
+  <include file="$(find planning_launch)/launch/planning.launch" />
+
+  <!-- Control -->
+  <include file="$(find control_launch)/launch/control.launch">
+    <arg name="lateral_controller_mode" value="mpc_follower" doc="options: mpc_follower, pure_pursuit"/>
+  </include>
+
+  <!-- Rviz -->
+  <node pkg="rviz" type="rviz" name="rviz" output="screen" args="-d $(find autoware_launch)/rviz/autoware.rviz" />
+
+  <!-- Web Controller -->
+  <!-- <include file="$(find roswww)/launch/roswww.launch">
+    <arg name="cached" value="false"/>
+  </include>
+  <include file="$(find rosbridge_server)/launch/rosbridge_websocket.launch" /> -->
+</launch>

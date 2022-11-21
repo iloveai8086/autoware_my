@@ -1,0 +1,21 @@
+wheel_radius: 0.39
+wheel_width: 0.42
+wheel_base: 2.74 # between front wheel center and rear wheel center
+wheel_tread: 1.63 # between left wheel center and right wheel center
+front_overhang: 1.0 # between front wheel center and vehicle front
+rear_overhang: 1.03 # between rear wheel center and vehicle rear 
+left_overhang: 0.1 # between left wheel center and vehicle left
+right_overhang: 0.1 # between right wheel center and vehicle right
+vehicle_height: 2.5
+
+# 这部分的值对控制和规划有关系，因为是自车的一些属性，这个是港口车的参数
+#truck
+# wheel_radius: 0.55
+# wheel_width: 0.32
+# wheel_base: 4.45 # between front wheel center and rear wheel center
+# wheel_tread: 2.06 # between left wheel center and right wheel center
+# front_overhang: 1.7 # between front wheel center and vehicle front
+# rear_overhang: 1.45 # between rear wheel center and vehicle rear 
+# left_overhang: 0.27 # between left wheel center and vehicle left
+# right_overhang: 0.27 # between right wheel center and vehicle right
+# vehicle_height: 3.37
