@@ -68,7 +68,7 @@
 
 
 
-
+// 没有写cu 的.h那么就必须在这边声明
 void preprocess_kernel_img(uint8_t *src, int src_width, int src_height,
                            float *dst, int dst_width, int dst_height,
                            cudaStream_t stream);
@@ -142,7 +142,7 @@ namespace yolo {
         out_boxes_d_ = cuda::make_unique<float[]>(getMaxBatchSize() * getMaxDetections() * 4);
         out_classes_d_ = cuda::make_unique<float[]>(getMaxBatchSize() * getMaxDetections());
         cudaStreamCreate(&stream_);
-        checkRuntime(cudaMalloc((void**)&buffers[0], 1 * 3 * 640 * 640 * sizeof(float)));
+        checkRuntime(cudaMalloc((void **) &buffers[0], 1 * 3 * 640 * 640 * sizeof(float)));  //私有变量这边初始化当全局的使用
         return true;
     }
 
@@ -172,14 +172,23 @@ namespace yolo {
 //        return result;
 
         size_t size_image = in_img.cols * in_img.rows * 3;
-        size_t size_image_dst = 640 * 640 * 3;
+        // size_t size_image_dst = 640 * 640 * 3;
         memcpy(img_host, in_img.data, size_image);
         checkRuntime(cudaMemcpyAsync(img_device, img_host, size_image, cudaMemcpyHostToDevice, stream_));
 
+        float *buffer_idx = (float *) buffers[0];  // 强制转换 就是个首地址，指针；看一下cudamalloc最后分配的内存在哪里
 
-        float* buffer_idx = (float*)buffers[0];
+        auto start = std::chrono::system_clock::now();
+        preprocess_kernel_img(img_device, in_img.cols, in_img.rows, buffer_idx, w, h, stream_);
+        // 在这个kernel里面确定了buffer_idx是640*640*3
+        // 越界的原因是因为，buffer_idx一开始没有和显存绑定在一起
+        // checkRuntime(cudaFree(buffers[0]));  // 这边不能free
+        auto end = std::chrono::system_clock::now();
+        std::cout << "kernel time: " << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count()
+                  << "us" << std::endl;
+        return buffer_idx;
 
-        // std::vector<float> result(640 * 640 * 3);
+// std::vector<float> result(640 * 640 * 3);
         // std::cout<< typeid(result.data()).name() << std::endl;
         // float* data = result.data();
 
@@ -190,16 +199,6 @@ namespace yolo {
 
         // std::cout<< w<<' '<< h<<std::endl;  // 640 640
         // std::cout<< in_img.cols<<' '<< in_img.rows<<std::endl;  // 960 540
-        auto start = std::chrono::system_clock::now();
-        preprocess_kernel_img(img_device, in_img.cols, in_img.rows, buffer_idx, 640, 640, stream_);
-        // 越界的原因是因为，buffer_idx一开始没有和显存绑定在一起
-        // checkRuntime(cudaFree(buffers[0]));  // 这边不能free
-        auto end = std::chrono::system_clock::now();
-        std::cout << "kernel time: " << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count()
-                  << "us" << std::endl;
-        return buffer_idx;
-
-
         // buffer_idx += size_image_dst;
 //        auto start = std::chrono::system_clock::now();
 //        cv::Mat img_float = warpaffine_to_center_align(in_img, cv::Size(w, h),stream_);
@@ -215,8 +214,10 @@ namespace yolo {
 
 
 //        int nBytes = img_float.rows * img_float.cols * img_float.channels();
+
 //        std::vector<float> result(h * w * c);
 //        auto data = result.data();  // 这几句拷贝的很耗时间，删掉就是直接光速
+
 //        memcpy(data, img_float.data, nBytes);
 //        int channel_length = h * w;
 //        for (int i = 0; i < c; ++i) {
@@ -393,7 +394,8 @@ namespace yolo {
 
         auto start = std::chrono::system_clock::now();
 
-        const auto input = preprocess(in_img, input_dims.at(0), input_dims.at(2), input_dims.at(1), img_host, img_device);
+        const auto input = preprocess(in_img, input_dims.at(0), input_dims.at(2), input_dims.at(1), img_host,
+                                      img_device);
         // std::cout << sizeof(input) << ' ' << sizeof(input[0]) << std::endl;
         // std::cout << input.data() << ' ' << input.size() << ' ' << typeid(input).name() << std::endl;
         // 0x7f2bdb8d98d0 1228800 StvectorIfSaIfEE
@@ -404,8 +406,9 @@ namespace yolo {
 
         // 这边数组越界,原来这边报错未必是这边越界，他妈的上面越界了
         CHECK_CUDA_ERROR(
-                cudaMemcpy(input_d_.get(),input, 640*640*3 * sizeof(float), cudaMemcpyHostToDevice));
-
+                cudaMemcpy(input_d_.get(), input, 640 * 640 * 3 * sizeof(float), cudaMemcpyHostToDevice));
+//        CHECK_CUDA_ERROR(
+//                cudaMemcpy(input_d_.get(), input.data(), input.size() * sizeof(float), cudaMemcpyHostToDevice));
 
         std::vector<void *> buffers = {
                 input_d_.get(), out_scores_d_.get(), out_boxes_d_.get(), out_classes_d_.get()};

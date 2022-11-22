@@ -362,6 +362,6 @@ void preprocess_kernel_img(
     warpaffine_kernel<<<blocks, threads, 0, stream>>>(
             src, src_width*3, src_width,
             src_height, dst, dst_width,
-            dst_height, 128, d2s, jobs);
+            dst_height, 128, d2s, jobs);  // 填充到底128还是114？
 
 }

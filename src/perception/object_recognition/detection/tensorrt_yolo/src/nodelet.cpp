@@ -168,7 +168,7 @@ namespace object_recognition {
         }
         auto end = std::chrono::system_clock::now();
         std::cout << "end2end time: " << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count()
-                  << "us" << std::endl;
+                  << "us" << std::endl;  // 用yolov56.0的模型会更快，去掉focus和spp改为spp，目前已经替换了
         // std::cout << "infer done!" << std::endl;
         const auto width = in_image_ptr->image.cols;
         const auto height = in_image_ptr->image.rows;
