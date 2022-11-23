@@ -130,6 +130,7 @@ namespace yolo {
     }
 
     bool Net::prepare() {
+        //这个函数，一个是在构造函数直接调用的，一个是build engine时候
         if (!engine_) {
             return false;
         }
@@ -288,8 +289,7 @@ namespace yolo {
             return;
         }
 
-        parser->parseFromFile(
-                onnx_file_path.c_str(), static_cast<int>(nvinfer1::ILogger::Severity::kERROR));
+        parser->parseFromFile(onnx_file_path.c_str(), static_cast<int>(nvinfer1::ILogger::Severity::kERROR));
         std::vector<nvinfer1::ITensor *> scores, boxes, classes;
         const auto input = network->getInput(0);
         const auto num_outputs = network->getNbOutputs();
@@ -297,6 +297,7 @@ namespace yolo {
         const auto input_channel = input_dims.d[1];
         const auto input_height = input_dims.d[2];
         const auto input_width = input_dims.d[3];
+        // 三个输出
         for (int i = 0; i < num_outputs; ++i) {
             auto output = network->getOutput(i);
             std::vector<float> anchor(
@@ -315,10 +316,10 @@ namespace yolo {
         // Cleanup outputs
         for (int i = 0; i < num_outputs; i++) {
             auto output = network->getOutput(0);
-            network->unmarkOutput(*output);
+            network->unmarkOutput(*output); // 将原来解析得到onnx的三个输出，现在不作为输出
         }
 
-        // Concat tensors from each feature map
+        // Concat tensors from each feature map    像杜老操作onnx那边一样，concat，难道是1 25200 85？
         std::vector<nvinfer1::ITensor *> concat;
         for (auto tensors : {scores, boxes, classes}) {
             auto layer = network->addConcatenation(tensors.data(), tensors.size());
@@ -328,7 +329,7 @@ namespace yolo {
         }
 
         // Add NMS plugin
-        auto nmsPlugin = yolo::NMSPlugin(yolo_config.iou_thresh, yolo_config.detections_per_im);
+        auto nmsPlugin = yolo::NMSPlugin(yolo_config.iou_thresh, yolo_config.detections_per_im);  // 100 max det
         auto layer = network->addPluginV2(concat.data(), concat.size(), nmsPlugin);
         for (int i = 0; i < layer->getNbOutputs(); i++) {
             auto output = layer->getOutput(i);
@@ -412,6 +413,7 @@ namespace yolo {
 
         std::vector<void *> buffers = {
                 input_d_.get(), out_scores_d_.get(), out_boxes_d_.get(), out_classes_d_.get()};
+
         try {
             infer(buffers, 1);
         } catch (const std::runtime_error &e) {

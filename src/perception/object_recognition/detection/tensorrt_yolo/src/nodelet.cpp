@@ -84,8 +84,7 @@ namespace object_recognition {
                     new yolo::Net(onnx_file, mode, 1, yolo_config_, calibration_images, calib_cache_file));
             net_ptr_->save(engine_file);
         }
-        image_transport::SubscriberStatusCallback connect_cb =
-                boost::bind(&TensorrtYoloNodelet::connectCb, this);
+        image_transport::SubscriberStatusCallback connect_cb = boost::bind(&TensorrtYoloNodelet::connectCb, this);
         std::lock_guard<std::mutex> lock(connect_mutex_);
         objects_pub_ = pnh_.advertise<autoware_perception_msgs::DynamicObjectWithFeatureArray>(
                 "out/objects", 1, boost::bind(&TensorrtYoloNodelet::connectCb, this),
@@ -227,6 +226,7 @@ namespace object_recognition {
             }
             out_objects.feature_objects.push_back(object);
 
+            // 用老板的预处理就把这几行注释的开启
 //            const auto left = std::max(0, static_cast<int>(object.feature.roi.x_offset));
 //            const auto top = std::max(0, static_cast<int>(object.feature.roi.y_offset));
 //            const auto right =

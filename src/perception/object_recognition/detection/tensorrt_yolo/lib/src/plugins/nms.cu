@@ -88,7 +88,7 @@ namespace yolo {
                         float iarea = ibox.z * ibox.w;
                         float marea = mbox.z * mbox.w;
                         float inter = w * h;
-                        float overlap = inter / (iarea + marea - inter);
+                        float overlap = inter / (iarea + marea - inter); // 算IOU
                         if (overlap > threshold) {
                             scores[i] = 0.0f;
                         }
