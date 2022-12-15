@@ -46,8 +46,9 @@ namespace object_recognition {
         virtual void onInit();
 
         void connectCb();
+        void connectCb2();
 
-        void callback(const sensor_msgs::Image::ConstPtr &image_msg);
+        void callback(const sensor_msgs::CompressedImage::ConstPtr &image_msg);
 
         bool readLabelFile(const std::string &filepath, std::vector<std::string> *labels);
 
@@ -60,6 +61,8 @@ namespace object_recognition {
         ros::Publisher objects_pub_;
 
         image_transport::Subscriber image_sub_;
+        ros::Subscriber image_sub_2_;
+        ros::Publisher image_pub_2_;
 
         yolo::Config yolo_config_;
 
@@ -70,7 +73,7 @@ namespace object_recognition {
         std::unique_ptr<yolo::Net> net_ptr_;
         int input_height = 640;
         int input_width = 640;
-        float image_cols = 960.0;
+        float image_cols = 960.0;  // 这边需要根据输入进行修改回头写到launch或者cam info里面
         float image_rows = 540.0;
         float scale_x = input_width / image_cols; //(float) image.cols;  // 960
         float scale_y = input_height / image_rows; //(float) image.rows;  // 540

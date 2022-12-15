@@ -1,13 +1,13 @@
 <launch>
-  <arg name="image_raw0" default="/image_raw"/>
-  <arg name="image_raw1" default="/image_raw2"/>
-  <arg name="image_raw2" default="/image_raw3"/>
-  <arg name="image_raw3" default=""/>
+  <arg name="image_raw0" default="/gmsl/front/image_raw/compressed"/>
+  <arg name="image_raw1" default="/gmsl/front_left/image_raw/compressed"/>
+  <arg name="image_raw2" default="/gmsl/front_right/image_raw/compressed"/>
+  <arg name="image_raw3" default="/gmsl/left/image_raw/compressed"/>
   <arg name="image_raw4" default=""/>
   <arg name="image_raw5" default=""/>
   <arg name="image_raw6" default=""/>
   <arg name="image_raw7" default=""/>
-  <arg name="image_number" default="3"/>
+  <arg name="image_number" default="4"/>
   <arg name="output_topic" default="rois"/>
 
   <include if="$(eval image_number >= 1)" file="$(find tensorrt_yolo)/launch/tensorrt_yolo.launch">

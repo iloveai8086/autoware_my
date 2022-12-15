@@ -33,7 +33,7 @@ namespace object_recognition {
     void TensorrtYoloNodelet::onInit() {
         nh_ = getNodeHandle();
         pnh_ = getPrivateNodeHandle();
-        it_.reset(new image_transport::ImageTransport(pnh_));
+        it_.reset(new image_transport::ImageTransport(pnh_));  // 这边可能需要修改
         std::string onnx_file;
         std::string engine_file;
         std::string label_file;
@@ -84,21 +84,29 @@ namespace object_recognition {
                     new yolo::Net(onnx_file, mode, 1, yolo_config_, calibration_images, calib_cache_file));
             net_ptr_->save(engine_file);
         }
-        image_transport::SubscriberStatusCallback connect_cb = boost::bind(&TensorrtYoloNodelet::connectCb, this);
-        std::lock_guard<std::mutex> lock(connect_mutex_);
+        // image_transport::SubscriberStatusCallback connect_cb = boost::bind(&TensorrtYoloNodelet::connectCb, this);
+        // boost::function<void(const ros::SingleSubscriberPublisher&)> connect_cb = boost::bind(&TensorrtYoloNodelet::connectCb, this);
+        // ros::SubscriberStatusCallback connect_cb = boost::bind(&TensorrtYoloNodelet::connectCb, this);
+        // std::lock_guard<std::mutex> lock(connect_mutex_);
+        image_sub_2_ = pnh_.subscribe("in/image",1,&TensorrtYoloNodelet::callback, this);
+//        objects_pub_ = pnh_.advertise<autoware_perception_msgs::DynamicObjectWithFeatureArray>(
+//                "out/objects", 1, boost::bind(&TensorrtYoloNodelet::connectCb, this),
+//                boost::bind(&TensorrtYoloNodelet::connectCb, this));
         objects_pub_ = pnh_.advertise<autoware_perception_msgs::DynamicObjectWithFeatureArray>(
-                "out/objects", 1, boost::bind(&TensorrtYoloNodelet::connectCb, this),
-                boost::bind(&TensorrtYoloNodelet::connectCb, this));
-        image_pub_ = it_->advertise("out/image", 1, connect_cb, connect_cb);
+                "out/objects", 1);
+        // image_pub_ = it_->advertise("out/image", 1, connect_cb, connect_cb);
+        // image_pub_2_ = pnh_.advertise<sensor_msgs::CompressedImage>("out/image",1);
+        image_pub_ = it_->advertise("out/image", 1);
         out_scores_ =
                 std::make_unique<float[]>(net_ptr_->getMaxBatchSize() * net_ptr_->getMaxDetections());
         out_boxes_ =
                 std::make_unique<float[]>(net_ptr_->getMaxBatchSize() * net_ptr_->getMaxDetections() * 4);
         out_classes_ =
                 std::make_unique<float[]>(net_ptr_->getMaxBatchSize() * net_ptr_->getMaxDetections());
+
         i2d[0] = scale;
         i2d[1] = 0;
-        i2d[2] = (-scale * image_cols + input_width + scale - 1) * 0.5;
+        i2d[2] = (-scale * image_cols + input_width + scale - 1) * 0.5; //
         i2d[3] = 0;
         i2d[4] = scale;
         i2d[5] = (-scale * image_rows + input_height + scale - 1) * 0.5; // 之前的公式的推导，计算我们的M矩阵，知道为什么是这么写的
@@ -114,20 +122,31 @@ namespace object_recognition {
         checkRuntime(cudaMalloc((void**)&img_device, 3000*3000* 3));  // 3000*3000*3
     }
 
-    void TensorrtYoloNodelet::connectCb() {
-        std::lock_guard<std::mutex> lock(connect_mutex_);
-        if (objects_pub_.getNumSubscribers() == 0 && image_pub_.getNumSubscribers() == 0)
-            image_sub_.shutdown();
-        else if (!image_sub_)
-            image_sub_ = it_->subscribe("in/image", 1, &TensorrtYoloNodelet::callback, this);
-    }
+//    void TensorrtYoloNodelet::connectCb() {
+//        std::lock_guard<std::mutex> lock(connect_mutex_);
+//        if (objects_pub_.getNumSubscribers() == 0 && image_pub_.getNumSubscribers() == 0)  // 两个发出去的都没人订阅就停止sub
+//            image_sub_.shutdown();
+//        else if (!image_sub_){
+//            image_sub_ = it_->subscribe("in/image", 1, &TensorrtYoloNodelet::callback, this);
+//        }
+//    }
 
-    void TensorrtYoloNodelet::callback(const sensor_msgs::Image::ConstPtr &in_image_msg) {
+//    void TensorrtYoloNodelet::connectCb2() {
+//        std::lock_guard<std::mutex> lock(connect_mutex_);
+//        if (objects_pub_.getNumSubscribers() == 0 && image_pub_2_.getNumSubscribers() == 0)  // 两个发出去的都没人订阅就停止sub
+//            image_sub_2_.shutdown();
+//        else if (!image_sub_){
+//            // image_sub_ = it_->subscribe("in/image", 1, &TensorrtYoloNodelet::callback, this);
+//            image_sub_2_ = nh_.subscribe("in/image",1,&TensorrtYoloNodelet::callback, this);
+//        }
+//    }
+
+    void TensorrtYoloNodelet::callback(const sensor_msgs::CompressedImage::ConstPtr &in_image_msg) {
         autoware_perception_msgs::DynamicObjectWithFeatureArray out_objects;
 
         cv_bridge::CvImagePtr in_image_ptr;
         try {
-            in_image_ptr = cv_bridge::toCvCopy(in_image_msg, sensor_msgs::image_encodings::BGR8);
+            in_image_ptr = cv_bridge::toCvCopy(in_image_msg, sensor_msgs::image_encodings::BGR8);  // opencv为bgr8
         } catch (cv_bridge::Exception &e) {
             NODELET_ERROR("cv_bridge exception: %s", e.what());
             return;
@@ -240,7 +259,8 @@ namespace object_recognition {
 //                    in_image_ptr->image, cv::Point(left, top), cv::Point(right, bottom), cv::Scalar(0, 0, 255), 3,
 //                    8, 0);
         }
-        image_pub_.publish(in_image_ptr->toImageMsg());
+         image_pub_.publish(in_image_ptr->toImageMsg());  // 这个地方也得改 因为是image_transport::Publisher类型
+//        image_pub_2_.publish(in_image_ptr->toImageMsg());
 
         out_objects.header = in_image_msg->header;
         objects_pub_.publish(out_objects);
